@@ -119,13 +119,9 @@ class Collector {
         }
       }
       elseif (in_array($def->getType(), ['text_long', 'text_with_summary']) and !$entity->get($f)->isEmpty()) {
-        if ($this->check_text_format($entity->get($f)->format)) {
-          $text = $entity->get($f)->value;
-          $text .= $entity->get($f)->summary ?? '';
-          /** @var array $field_uuids */
-          $field_uuids = $this->filter->process($text);
-          array_push($embedded_uuids, ...$field_uuids);
-        }
+        /** @var array $field_uuids */
+        $field_uuids = $this->processTextField($entity, $f);
+        array_push($embedded_uuids, ...$field_uuids);
       }
     }
     return $embedded_uuids;
@@ -164,7 +160,7 @@ class Collector {
     return $processed;
   }
 
-  function check_text_format($fmt) {
+  private function check_text_format($fmt) {
 
     if (!empty($this->is_applicable[$fmt])) {
       return $this->is_applicable[$fmt];
@@ -178,6 +174,18 @@ class Collector {
     }
 
     return FALSE;
+  }
+
+  private function processTextField(ContentEntityInterface $entity, $fieldname): array {
+    /** @var array $field_uuids */
+    $field_uuids = [];
+    if ($this->check_text_format($entity->get($fieldname)->format)) {
+      $text = $entity->get($fieldname)->value;
+      $text .= $entity->get($fieldname)->summary ?? '';
+      /** @var array $field_uuids */
+      $field_uuids = $this->filter->process($text);
+    }
+    return $field_uuids;
   }
 
 
