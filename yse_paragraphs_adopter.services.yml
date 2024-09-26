@@ -1,0 +1,8 @@
+services:
+  yse_paragraphs_adopter.collector:
+    class: Drupal\yse_paragraphs_adopter\Service\Collector
+    arguments:
+      - '@entity_field.manager'
+      - '@entity_type.manager'
+      - '@plugin.manager.filter'
+      - '@module_handler'

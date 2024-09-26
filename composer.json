@@ -1,0 +1,6 @@
+{
+  "name": "slattery/yse_paragraphs_adopter",
+  "description": "Finds embedded paragraphs on a node and populates parent information",
+  "type": "drupal-custom-module",
+  "license": "GPL-2.0-or-later"
+}

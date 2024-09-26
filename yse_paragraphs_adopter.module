@@ -1,0 +1,77 @@
+<?php
+
+use Drupal\Core\Entity\EntityInterface;
+use Drupal\field\Entity\FieldConfig;
+use Drupal\Core\Form\FormStateInterface;
+use Drupal\node\NodeTypeInterface;
+
+function yse_paragraphs_adopter_node_presave(EntityInterface $parent_node) {
+  \Drupal::service('yse_paragraphs_adopter.collector')->adopt_paragraphs_from_node($parent_node);
+}
+
+//TODO make type thirdparty setting and/or trigger for addition of
+//field_embedded_paragraphs on to any node type that wants this feature.
+
+
+function yse_paragraphs_adopter_form_node_type_form_alter(&$form, FormStateInterface $form_state) {
+  // Adds paragraph type grouping to the form.
+  /** @var Drupal\node\NodeTypeInterface $node_type */
+  $node_type = $form_state->getFormObject()->getEntity();
+  $form['adopt_embedded_paragraphs'] = [
+    '#type' => 'checkbox',
+    '#title' => t('Adopt Embedded Parapraphs from WYSIWYG'),
+    '#default_value' => $node_type->getThirdPartySetting('yse_paragraphs_adopter', 'adopt_embedded_paragraphs', FALSE),
+  ];
+  $form['#entity_builders'][] = 'yse_paragraphs_adopter_form_node_type_form_builder';
+
+}
+
+
+function yse_paragraphs_adopter_form_node_type_form_builder($entity_type, NodeTypeInterface $type, &$form, FormStateInterface $form_state) {
+  // THANK YOU TOKEN MOD
+  // Entity builders run twice, once during validation and again during
+  // submission, so we only run this code after validation has been performed.
+  if (!$form_state->isValueEmpty('adopt_embedded_paragraphs') && $form_state->getTemporaryValue('entity_validated')) {
+
+    // Don't create a menu link if the node is not being saved.
+    $triggering_element = $form_state->getTriggeringElement();
+    if (!$triggering_element || !isset($triggering_element['#submit']) || !in_array('::save', $triggering_element['#submit'])) {
+      return;
+    }
+    //ADD field_embedded_paragraphs to node type field defs
+    $type->setThirdPartySetting('yse_paragraphs_adopter', 'adopt_embedded_paragraphs', $form_state->getValue('adopt_embedded_paragraphs'));
+    $bundle_definitions = \Drupal::service('yse_paragraphs_adopter.collector')->entityFieldManager->getFieldDefinitions('node', $entity_type)['field_embedded_paragraphs'];
+    if (!isset($bundle_definitions)){
+      $storage_definition = \Drupal::service('entity_field.manager')->getFieldStorageDefinitions('node')['field_embedded_paragraphs'];
+      $adopter_definition = FieldDefinition::createFromFieldStorageDefinition($storage_definition)
+        ->setTargetBundle($entity_type)
+        ->setProvider('yse_paragraphs_adopter')
+        ->setDescription(t('This field is where WYSIWYG embeds are parked so they are not orphaned.'))
+        ->setDisplayOptions('view', ['region' => 'hidden'])
+        ->setDisplayConfigurable('view', FALSE)
+        ->setDisplayOptions('form', [
+          'type' => 'paragraphs',
+          'settings' => [
+            'display_label' => TRUE,
+            'title' =>  'Paragraph',
+            'title_plural'  =>  'Paragraphs',
+            'edit_mode'  =>  'closed',
+            'closed_mode'  =>  'summary',
+            'autocollapse'  =>  'none',
+            'closed_mode_threshold'  =>  '0',
+            'add_mode'  =>  'dropdown',
+            'form_display_mode'  =>  'default',
+            'default_paragraph_type'  =>  '_none',
+          ],
+          'weight' => 100,
+        ])
+        ->setCardinality(-1)
+        ->setDisplayConfigurable('form', TRUE);
+
+      \Drupal::service('field_definition.listener')->onFieldDefinitionCreate($adopter_definition);
+    }
+  }
+  else {
+    $type->unsetThirdPartySetting('yse_paragraphs_adopter', 'include_promoter_target_bundles');
+  }
+}

@@ -1,0 +1,9 @@
+---
+core_version_requirement: '^9 || ^10'
+description: 'Finds embedded paragraphs on a node and populates parent information.'
+name: 'YSE Paragraphs Embed Adoption'
+package: 'YSE WebOps'
+type: module
+version: v1.0
+dependencies:
+  - paragraphs_inline_entity_form:paragraphs_inline_entity_form
