@@ -1,7 +1,11 @@
 <?php
 
 use Drupal\Core\Entity\EntityInterface;
+use Drupal\Core\Entity\Entity\EntityFormDisplay;
 use Drupal\field\Entity\FieldConfig;
+use Drupal\field\Entity\FieldStorageConfig;
+use Drupal\Core\Field\BaseFieldDefinition;
+use Drupal\Core\Field\FieldDefinition;
 use Drupal\Core\Form\FormStateInterface;
 use Drupal\node\NodeTypeInterface;
 
@@ -13,73 +17,131 @@ function yse_paragraphs_adopter_form_node_type_form_alter(&$form, FormStateInter
   // Adds paragraph type grouping to the form.
   /** @var Drupal\node\NodeTypeInterface $node_type */
   $node_type = $form_state->getFormObject()->getEntity();
-  $form['adopt_embedded_paragraphs'] = [
+   $form['adopt'] = [
+      '#type' => 'details',
+      '#title' => t('Embedded Paragraphs'),
+      '#group' => 'additional_settings',
+    ];
+  //TODO: addon like web/core/modules/node/content_types.js
+  $form['adopt']['adopt_embedded_paragraphs'] = [
     '#type' => 'checkbox',
     '#title' => t('Adopt Embedded Parapraphs from WYSIWYG'),
     '#default_value' => $node_type->getThirdPartySetting('yse_paragraphs_adopter', 'adopt_embedded_paragraphs', FALSE),
+    '#description' => t('Embedded paragraphs are collected on presave and stored in a hidden field.'),
   ];
   $form['#entity_builders'][] = 'yse_paragraphs_adopter_form_node_type_form_builder';
-
 }
 
 // Should we simplify this to just deal with the thirdpartysetting and do the rest in presave?
 // Not sure if need and would have the same protection to avoid running twice in presave.
 function yse_paragraphs_adopter_form_node_type_form_builder($entity_type, NodeTypeInterface $type, &$form, FormStateInterface $form_state) {
-
    //take care of the third party setting first.
-   if ($form_state->isValueEmpty('adopt_embedded_paragraphs'){
-        $type->unsetThirdPartySetting('yse_paragraphs_adopter', 'include_promoter_target_bundles');
-   }
-   else {
+  if ($form_state->isValueEmpty('adopt_embedded_paragraphs')){
+    $type->unsetThirdPartySetting('yse_paragraphs_adopter', 'adopt_embedded_paragraphs');
+  }
+  else {
     $type->setThirdPartySetting('yse_paragraphs_adopter', 'adopt_embedded_paragraphs', $form_state->getValue('adopt_embedded_paragraphs'));
-   }
+  }
 }
 
 function yse_paragraphs_adopter_node_type_presave(NodeTypeInterface $node_type){
-  //That should be set above in the form builder.
-  if ($node_type->getThirdPartySetting('yse_paragraphs_adopter', 'adopt_embedded_paragraphs', FALSE)){
-    //TODO: Might check for existing field and take action or hide it.
-    return;
-  }
-  //if the field is there, no further action is needed as long as we don't take action above.
-  $bundle_field_definition = \Drupal::service('yse_paragraphs_adopter.collector')->entityFieldManager->getFieldDefinitions('node', $node_type->id())['field_embedded_paragraphs'];
-  if (isset($bundle_field_definition)){
+  //If we do not have the setting, no action is needed.
+  if (!$node_type->getThirdPartySettings('yse_paragraphs_adopter')['adopt_embedded_paragraphs']) {
     return;
   }
 
-  //This assumes that the definition exists from the module install process.
-  $storage_definition = \Drupal::service('entity_field.manager')->getFieldStorageDefinitions('node')['field_embedded_paragraphs'];
-  $adopter_definition = FieldDefinition::createFromFieldStorageDefinition($storage_definition)
-    ->setTargetBundle($node_type->id())
-    ->setProvider('yse_paragraphs_adopter')
-    ->setDescription(t('This field is where WYSIWYG embeds are parked so they are not orphaned.'))
-    ->setDisplayOptions('view', ['region' => 'hidden'])
-    ->setDisplayConfigurable('view', FALSE)
-    ->setDisplayOptions('form', [
-      'type' => 'paragraphs',
-      'settings' => [
-        'display_label' => TRUE,
-        'title' =>  'Paragraph',
-        'title_plural'  =>  'Paragraphs',
-        'edit_mode'  =>  'closed',
-        'closed_mode'  =>  'summary',
-        'autocollapse'  =>  'none',
-        'closed_mode_threshold'  =>  '0',
-        'add_mode'  =>  'dropdown',
-        'form_display_mode'  =>  'default',
-        'default_paragraph_type'  =>  '_none',
-      ],
-      'weight' => 100,
-    ])
-    ->setCardinality(-1)
-    ->setDisplayConfigurable('form', TRUE);
+  /**
+   * if we do not have storage for the field, we can not proceed.
+   * @var Drupal\field\Entity\FieldStorageConfig $field_storage */
+  if (!$field_storage = FieldStorageConfig::loadByName('node', 'field_embedded_paragraphs')){
+    return; //TODO: throw exception
+  }
 
-  \Drupal::service('field_definition.listener')->onFieldDefinitionCreate($adopter_definition);
-  \Drupal::service('entity_field.manager')->clearCachedFieldDefinitions();
+  /**
+   * if the field_embedded_paragraphs field exists for this bundle, no action is needed.
+   * @var Drupal\field\Entity\FieldConfig $field */
+  if ($field = FieldConfig::loadByName('node', $node_type->id(), 'field_embedded_paragraphs')){
+    return;
+  }
+
+  //create the field from field storage and save it.
+  $field = FieldConfig::create([
+    'field_name' => 'field_embedded_paragraphs',
+    'entity_type' => 'node',
+    'field_storage' => $field_storage,
+    'bundle' => $node_type->id(),
+    'label' => 'Embedded Paragraphs',
+    'settings' => [
+      'handler' => 'default:paragraph',
+      'handler_settings' => ['target_bundles' => NULL],
+    ],
+  ]);
+  $field->save();
+
+  /**
+   * NOTE: when this field is added, the view display defaults to hidden
+   * which is good, so no editing is done on EntityViewDisplay
+   *
+   * Prepare to edit the form display
+   * TODO: find out if this exists when isNew prior to presave.
+   * TDOD: find out if we need a create hook instead.
+   * @var Drupal\Core\Entity\Entity\EntityFormDisplay $formview */
+  $formview = EntityFormDisplay::load('node' . '.' . $node_type->id() . '.' . 'default');
+  if ($formview){
+    $component = $formview->getComponent('field_embedded_paragraphs');
+    if (!$component){
+      $formview->setComponent('field_embedded_paragraphs', [
+        'type' => 'paragraphs',
+        'weight' => '100',
+        'region' => 'content',
+        'settings' => [
+          'display_label' => TRUE,
+          'title' =>  'Embedded Paragraph',
+          'title_plural'  =>  'Embedded Paragraphs',
+          'edit_mode'  =>  'closed',
+          'closed_mode'  =>  'summary',
+          'autocollapse'  =>  'none',
+          'closed_mode_threshold'  =>  '0',
+          'add_mode'  =>  'dropdown',
+          'form_display_mode'  =>  'default',
+          'default_paragraph_type'  =>  '',
+          'target_bundles'  =>  [],
+          'features' => [
+            'add_above' => '0',
+            'collapse_edit_all' => 'collapse_edit_all',
+            'convert' => '0',
+            'duplicate' => '0',
+          ],
+        ]
+      ]);
+      $formview->save();
+    }
+  }
 }
 
+/**
+ * Altering the paragraphs field widget
+ * We no not want paragraphs to be added via the field, so we attempt
+ * a low-impact solution by offering an alternate twig template for the
+ * multiple value form widget that does not render the add button
+ * the template is found in a templates directory for this module.
+ *
+ * NOTE: this assumes the form component is defined as above to target a single template.
+ */
 
+function yse_paragraphs_adopter_theme_suggestions_field_multiple_value_form_alter(&$suggestions, array $variables) {
+  if ( isset($variables['element']['#attributes']['data-drupal-selector']) ){
+    if ($variables['element']['#attributes']['data-drupal-selector'] == 'edit-field-embedded-paragraphs'){
+      $suggestions[] = 'field_multiple_value_form__field_embedded_paragraphs';
+    }
+  }
+}
 
-
-
-
+function yse_paragraphs_adopter_theme() {
+  return [
+    'field_multiple_value_form__field_embedded_paragraphs' => [
+      'template' => 'field-multiple-value-form--field-embedded-paragraphs',
+      'base hook' => 'field_multiple_value_form',
+    ]
+  ];
+}
