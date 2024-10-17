@@ -71,6 +71,7 @@ function yse_paragraphs_adopter_node_type_presave(NodeTypeInterface $node_type){
     'field_storage' => $field_storage,
     'bundle' => $node_type->id(),
     'label' => 'Embedded Paragraphs',
+    'description' => 'Paragraphs found here were created within WYSIWYG fields on the node or nested in paragraphs!   You should not remove them from here, delete them from the WYSIWYG that houses them.   You may edit them but be careful, layout may be impacted as a side-effect.',
     'settings' => [
       'handler' => 'default:paragraph',
       'handler_settings' => ['target_bundles' => NULL],

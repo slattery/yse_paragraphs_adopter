@@ -139,7 +139,9 @@ class EmbeddedParagraphsCollector extends FilterBase implements ContainerFactory
             }
           }
           catch (EntityNotFoundException $e) {
-            watchdog_exception('yse_fieldutils', $e);
+            $this->loggerFactory->get('entity')->error('Embedded paragraphs: %error_msg.', [
+              '%error_msg' => $e,
+            ]);
           }
 
           if ($entity instanceof \Drupal\paragraphs\Entity\Paragraph) {
