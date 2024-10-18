@@ -118,6 +118,15 @@ class Collector {
           }
         }
       }
+      elseif ($f != 'field_embedded_paragraphs' && $def->getType() == 'entity_reference' && $def->getSetting('target_type') == 'paragraphs_library_item'){
+        foreach ($entity->get($f)->referencedEntities() as $delta => $libitem) {
+          //We check parent fields and we only fill them if the are empty so lib multiuse should be OK
+          //corner cases being libitem created in Paragraphs content list and used for the first time in some node
+          if ($libitem instanceof \Drupal\paragraphs_library\Entity\LibraryItem){
+            $this->process_entity($libitem);
+          }
+        }
+      }
       elseif (in_array($def->getType(), ['text_long', 'text_with_summary']) and !$entity->get($f)->isEmpty()) {
         /** @var array $field_uuids */
         $field_uuids = $this->processTextField($entity, $f);

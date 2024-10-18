@@ -17,11 +17,11 @@ function yse_paragraphs_adopter_form_node_type_form_alter(&$form, FormStateInter
   // Adds paragraph type grouping to the form.
   /** @var Drupal\node\NodeTypeInterface $node_type */
   $node_type = $form_state->getFormObject()->getEntity();
-   $form['adopt'] = [
-      '#type' => 'details',
-      '#title' => t('Embedded Paragraphs'),
-      '#group' => 'additional_settings',
-    ];
+  $form['adopt'] = [
+    '#type' => 'details',
+    '#title' => t('Embedded Paragraphs'),
+    '#group' => 'additional_settings',
+  ];
   //TODO: addon like web/core/modules/node/content_types.js
   $form['adopt']['adopt_embedded_paragraphs'] = [
     '#type' => 'checkbox',
@@ -35,8 +35,8 @@ function yse_paragraphs_adopter_form_node_type_form_alter(&$form, FormStateInter
 // Should we simplify this to just deal with the thirdpartysetting and do the rest in presave?
 // Not sure if need and would have the same protection to avoid running twice in presave.
 function yse_paragraphs_adopter_form_node_type_form_builder($entity_type, NodeTypeInterface $type, &$form, FormStateInterface $form_state) {
-   //take care of the third party setting first.
-  if ($form_state->isValueEmpty('adopt_embedded_paragraphs')){
+  //take care of the third party setting first.
+  if ($form_state->isValueEmpty('adopt_embedded_paragraphs')) {
     $type->unsetThirdPartySetting('yse_paragraphs_adopter', 'adopt_embedded_paragraphs');
   }
   else {
@@ -44,8 +44,9 @@ function yse_paragraphs_adopter_form_node_type_form_builder($entity_type, NodeTy
   }
 }
 
-function yse_paragraphs_adopter_node_type_presave(NodeTypeInterface $node_type){
+function yse_paragraphs_adopter_node_type_presave(NodeTypeInterface $node_type) {
   //If we do not have the setting, no action is needed.
+  //TODO: need a warning free way to do this test
   if (!$node_type->getThirdPartySettings('yse_paragraphs_adopter')['adopt_embedded_paragraphs']) {
     return;
   }
@@ -53,14 +54,14 @@ function yse_paragraphs_adopter_node_type_presave(NodeTypeInterface $node_type){
   /**
    * if we do not have storage for the field, we can not proceed.
    * @var Drupal\field\Entity\FieldStorageConfig $field_storage */
-  if (!$field_storage = FieldStorageConfig::loadByName('node', 'field_embedded_paragraphs')){
+  if (!$field_storage = FieldStorageConfig::loadByName('node', 'field_embedded_paragraphs')) {
     return; //TODO: throw exception
   }
 
   /**
    * if the field_embedded_paragraphs field exists for this bundle, no action is needed.
    * @var Drupal\field\Entity\FieldConfig $field */
-  if ($field = FieldConfig::loadByName('node', $node_type->id(), 'field_embedded_paragraphs')){
+  if ($field = FieldConfig::loadByName('node', $node_type->id(), 'field_embedded_paragraphs')) {
     return;
   }
 
@@ -88,25 +89,25 @@ function yse_paragraphs_adopter_node_type_presave(NodeTypeInterface $node_type){
    * TDOD: find out if we need a create hook instead.
    * @var Drupal\Core\Entity\Entity\EntityFormDisplay $formview */
   $formview = EntityFormDisplay::load('node' . '.' . $node_type->id() . '.' . 'default');
-  if ($formview){
+  if ($formview) {
     $component = $formview->getComponent('field_embedded_paragraphs');
-    if (!$component){
+    if (!$component) {
       $formview->setComponent('field_embedded_paragraphs', [
         'type' => 'paragraphs',
         'weight' => '100',
         'region' => 'content',
         'settings' => [
           'display_label' => TRUE,
-          'title' =>  'Embedded Paragraph',
-          'title_plural'  =>  'Embedded Paragraphs',
-          'edit_mode'  =>  'closed',
-          'closed_mode'  =>  'summary',
-          'autocollapse'  =>  'none',
-          'closed_mode_threshold'  =>  '0',
-          'add_mode'  =>  'dropdown',
-          'form_display_mode'  =>  'default',
-          'default_paragraph_type'  =>  '',
-          'target_bundles'  =>  [],
+          'title' => 'Embedded Paragraph',
+          'title_plural' => 'Embedded Paragraphs',
+          'edit_mode' => 'closed',
+          'closed_mode' => 'summary',
+          'autocollapse' => 'none',
+          'closed_mode_threshold' => '0',
+          'add_mode' => 'dropdown',
+          'form_display_mode' => 'default',
+          'default_paragraph_type' => '',
+          'target_bundles' => [],
           'features' => [
             'add_above' => '0',
             'collapse_edit_all' => 'collapse_edit_all',
@@ -131,8 +132,8 @@ function yse_paragraphs_adopter_node_type_presave(NodeTypeInterface $node_type){
  */
 
 function yse_paragraphs_adopter_theme_suggestions_field_multiple_value_form_alter(&$suggestions, array $variables) {
-  if ( isset($variables['element']['#attributes']['data-drupal-selector']) ){
-    if ($variables['element']['#attributes']['data-drupal-selector'] == 'edit-field-embedded-paragraphs'){
+  if (isset($variables['element']['#attributes']['data-drupal-selector'])) {
+    if ($variables['element']['#attributes']['data-drupal-selector'] == 'edit-field-embedded-paragraphs') {
       $suggestions[] = 'field_multiple_value_form__field_embedded_paragraphs';
     }
   }
