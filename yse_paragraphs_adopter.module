@@ -47,7 +47,7 @@ function yse_paragraphs_adopter_form_node_type_form_builder($entity_type, NodeTy
 function yse_paragraphs_adopter_node_type_presave(NodeTypeInterface $node_type) {
   //If we do not have the setting, no action is needed.
   //TODO: need a warning free way to do this test
-  if (!$node_type->getThirdPartySettings('yse_paragraphs_adopter')['adopt_embedded_paragraphs']) {
+  if (!array_key_exists('adopt_embedded_paragraphs', $node_type->getThirdPartySettings('yse_paragraphs_adopter'))) {
     return;
   }
 
