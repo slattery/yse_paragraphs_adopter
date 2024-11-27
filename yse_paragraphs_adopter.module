@@ -1,19 +1,24 @@
 <?php
 
-use Drupal\Core\Entity\EntityInterface;
 use Drupal\Core\Entity\Entity\EntityFormDisplay;
-use Drupal\field\Entity\FieldConfig;
-use Drupal\field\Entity\FieldStorageConfig;
+use Drupal\Core\Entity\EntityFormInterface;
+use Drupal\Core\Entity\EntityInterface;
 use Drupal\Core\Field\BaseFieldDefinition;
 use Drupal\Core\Field\FieldDefinition;
 use Drupal\Core\Form\FormStateInterface;
+use Drupal\Core\Url;
+use Drupal\entity_embed\Form\EntityEmbedDialog;
+use Drupal\field\Entity\FieldConfig;
+use Drupal\field\Entity\FieldStorageConfig;
+use Drupal\node\Entity\NodeType;
 use Drupal\node\NodeTypeInterface;
+use Drupal\paragraphs\Entity\Paragraph;
 
 function yse_paragraphs_adopter_node_presave(EntityInterface $parent_node) {
   \Drupal::service('yse_paragraphs_adopter.collector')->adopt_paragraphs_from_node($parent_node);
 }
 
-function yse_paragraphs_adopter_form_node_type_form_alter(&$form, FormStateInterface $form_state) {
+function yse_paragraphs_adopter_form_node_type_form_alter(&$form, FormStateInterface $form_state): void {
   // Adds paragraph type grouping to the form.
   /** @var Drupal\node\NodeTypeInterface $node_type */
   $node_type = $form_state->getFormObject()->getEntity();
@@ -121,6 +126,96 @@ function yse_paragraphs_adopter_node_type_presave(NodeTypeInterface $node_type) 
   }
 }
 
+
+  /**
+   * Implements hook_entity_extra_field_info().
+   * Puts our source counter in the form config pages
+   */
+  function yse_paragraphs_adopter_entity_extra_field_info() {
+    $extra = [];
+    foreach (NodeType::loadMultiple() as $node_type) {
+      if (array_key_exists('adopt_embedded_paragraphs', $node_type->getThirdPartySettings('yse_paragraphs_adopter'))) {
+        $extra['node'][$node_type->id()]['form']['adopted_paragraphs_for_node'] = [
+          'label' => t('Adopted Paragraphs List'),
+          'description' => t('Lists paragraphs embedded in WYSIWYGS.'),
+          'visible' => FALSE,
+        ];
+      }
+    }
+    return $extra;
+  }
+
+  /**
+   * Implements Implements hook_form_node_form_alter()
+   * Puts a list of adopted paragraphs on the edit form
+   */
+
+  function yse_paragraphs_adopter_form_node_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+
+    $form_object = $form_state->getFormObject();
+    if ($form_object->getOperation() != 'edit') {
+      // New entities won't have saved adoptions.
+      return;
+    }
+    $node         = $form_state->getFormObject()->getEntity();
+    $node_type    = $node->type->entity;
+
+    if (!$node->hasField('field_embedded_paragraphs')){
+      return;
+    }
+
+    if (!array_key_exists('adopt_embedded_paragraphs', $node_type->getThirdPartySettings('yse_paragraphs_adopter'))) {
+      return;
+    }
+
+    $adopted_paragraph_rows = [];
+    /** @var \Drupal\entity_reference_revisions\EntityReferenceRevisionsFieldItemList $votes */
+    $refs = $node->get('field_embedded_paragraphs');
+    /** @var \Drupal\paragraphs\Entity\Paragraph $adopted */
+    foreach ($refs->referencedEntities() as $adopted) {
+      $adopted_paragraph_rows[] =
+        [
+          'type' => $adopted->getType(),
+          'summary' => $adopted->getSummary()
+        ];
+    }
+
+    $form['adopted_paragraphs_for_node'] = [
+      '#type' => 'details',
+      '#title' => \Drupal::translation()->formatPlural(
+        count($adopted_paragraph_rows),
+        'Adopted Paragraph',
+        'Adopted Paragraphs'
+      ),
+      '#open' => FALSE,
+      '#access' => \Drupal::currentUser()->hasPermission('administer nodes'),
+    ];
+
+    //Not putting parent_field in here until it matters.
+
+    $form['adopted_paragraphs_for_node']['table'] = [
+      '#type' => 'table',
+      '#header' => [
+        t('Type'),
+        t('Summary'),
+      ],
+      '#empty' => t('- None -'),
+    ];
+
+    foreach ($adopted_paragraph_rows as $row) {
+      $assoc = [
+        'type' => [
+          '#markup' => $row['type'],
+        ],
+        'summary'  => [
+          '#markup' => $row['summary'],
+        ],
+      ];
+
+      $form['adopted_paragraphs_for_node']['table'][] = $assoc;
+    }
+  }
+
 /**
  * Altering the paragraphs field widget
  * We no not want paragraphs to be added via the field, so we attempt
@@ -144,6 +239,135 @@ function yse_paragraphs_adopter_theme() {
     'field_multiple_value_form__field_embedded_paragraphs' => [
       'template' => 'field-multiple-value-form--field-embedded-paragraphs',
       'base hook' => 'field_multiple_value_form',
+    ],
+    'reframe_iframe' => [
+      'template' => 'reframe-dialog-iframe',
+      'variables' => [
+        'iframe_attributes' => NULL,
+      ],
+    ],
+    'container__paragraphs_formfields' => [
+      'template' => 'container--paragraphs-formfields',
+      'base hook' => 'container',
+    ],
+    'html__yse_paragraphs_adopter__paragraph' => [
+      'template' => 'html--yse-paragraphs-adopter--paragraph',
+      'render element' => 'html',
+      'preprocess functions' => ['template_preprocess_html'],
+    ],
+    'page__yse_paragraphs_adopter__paragraph' => [
+      'template' => 'page--yse-paragraphs-adopter--paragraph',
+      'render element' => 'html',
+      'preprocess functions' => ['template_preprocess_page'],
+    ],
+    'container__entity_browser_paragraph_items_form__inline_entity_form' => [
+      'template' => 'container--entity-browser-paragraph-items-form',
+      'base hook' => 'container',
     ]
   ];
 }
+
+function yse_paragraphs_adopter_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+  $formObject = $form_state->getFormObject();
+
+  //shameless copy from paragraphs_inline_entity_form_form_alter
+  //All this because I need to reroute the form to our controller.
+  if ($formObject instanceof EntityEmbedDialog) {
+    if (_paragraphs_inline_entity_form_entity_browser_is_paragraph_item($form)) {
+      $form['#attached']['library'][] = 'paragraphs_inline_entity_form/dialog';
+      switch ($form_state->get('step')) {
+        case 'select':
+          // do nothing.
+          break;
+
+        case 'embed':
+            // Change the back button to link to the paragraph edit form.
+            $entity_uuid = $form['attributes']['data-entity-uuid']['#value'];
+            $entity_type_manager = \Drupal::service('entity_type.manager');
+            $entity = $entity_type_manager->getStorage('paragraph')
+              ->loadByProperties(['uuid' => $entity_uuid]);
+            $paragraph = current($entity);
+
+            $form['actions']['back'] = [
+              '#type' => 'submit',
+              '#value' => t('Edit paragraph'),
+              '#submit' => [],
+              '#attributes' => [
+                'onclick' => [
+                  'window.ckeditorSaveCallback = window.ckeditorSaveCallback || []; window.ckeditorSaveCallback[\'' . $entity_uuid . '\'] = Drupal.ckeditor.saveCallback'
+                ],
+              ],
+              '#ajax' => [
+                'url' => Url::fromRoute('yse_paragraphs_adopter.edit_form_reframe', [
+                  'entity_type' => 'paragraph',
+                  'entity' => $paragraph->id(),
+                ]),
+                'event' => 'click',
+              ],
+            ];
+            break;
+      }
+    }
+  }
+}
+
+/**
+ * Implements hook_paragraph_update().
+ */
+function yse_paragraphs_adopter_paragraph_update(Paragraph $paragraph) {
+  $route_name = Drupal::routeMatch()->getRouteName();
+  if($route_name = 'yse_paragraphs_adopter.edit_form_render'){
+    \Drupal::service('messenger')->addMessage(t('Paragraph updated'));
+  }
+}
+
+/**
+ * Implements hook_module_implements_alter().
+ */
+function yse_paragraphs_adopter_module_implements_alter(&$implementations, $hook) {
+  if ($hook == 'form_alter') {
+    $myimp = $implementations['yse_paragraphs_adopter'];
+    unset($implementations['yse_paragraphs_adopter']);
+    $implementations['yse_paragraphs_adopter'] = $myimp;
+  }
+}
+
+function yse_paragraphs_adopter_theme_suggestions_reframe_iframe_alter(&$suggestions, array $variables) {
+  if (isset($variables['iframe_attributes']['data-bundle-type'])) {
+    $suggestions[] = 'reframe_iframe__' . $variables['iframe_attributes']['data-bundle-type'];
+  }
+}
+
+function yse_paragraphs_adopter_theme_suggestions_container_alter(&$suggestions, array $variables) {
+  if (isset($variables['element']['#container_attributes'])
+  && isset($variables['element']['#container_attributes']['data-paragraphs-formfields'])) {
+    $suggestions[] = 'container__paragraphs_formfields';
+    if(isset($variables['element']['#form_id'])){
+      $suggestions[] = 'container__paragraphs_formfields__' . $variables['element']['#form_id'];
+    }
+  }
+}
+
+/**
+ * Checks that the browser type is a paragraph_item.
+ * Copied from paragraphs_inline_entity_form module
+ *
+ * @param $form
+ *  The form.
+ *
+ * @return boolean
+ *  True if it is a paragraph_item entity browser.
+ */
+function _paragraphs_inline_entity_form_entity_browser_is_paragraph_item($form) {
+  if (isset($form['entity_browser']['#entity_browser'])
+    && $form['entity_browser']['#entity_browser'] == 'paragraph_items') {
+    return TRUE;
+  }
+  if (isset($form['attributes']['data-embed-button'])
+    && $form['attributes']['data-embed-button']['#value'] == 'paragraphs_inline_entity_form') {
+    return TRUE;
+  }
+}
+
+
+

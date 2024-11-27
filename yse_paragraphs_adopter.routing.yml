@@ -1,0 +1,24 @@
+yse_paragraphs_adopter.edit_form_reframe:
+  path: /yse_paragraphs_adopter/{entity_type}/{entity}/reframe
+  defaults:
+    _controller: '\Drupal\yse_paragraphs_adopter\Controllers\ParagraphsFormReframeController::reframe'
+  requirements:
+    _entity_access: 'entity.update'
+  options:
+    _admin_route: TRUE
+    parameters:
+      entity:
+        type: entity:{entity_type}
+        load_latest_revision: 1
+yse_paragraphs_adopter.edit_form_render:
+  path: /yse_paragraphs_adopter/{entity_type}/{entity}/getform
+  defaults:
+    _controller: '\Drupal\yse_paragraphs_adopter\Controllers\ParagraphsFormReframeController::getform'
+  requirements:
+    _entity_access: 'entity.update'
+  options:
+    _admin_route: TRUE
+    parameters:
+      entity:
+        type: entity:{entity_type}
+        load_latest_revision: 1
